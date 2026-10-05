@@ -1,0 +1,28 @@
+name: tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+          cache: pip
+
+      - name: Install deps
+        run: |
+          # torch 必须走 CPU 索引：默认 PyPI 上的是 CUDA 版，CI 装它既慢又无意义
+          pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run tests
+        run: python -m pytest -p no:cacheprovider --no-cov
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"

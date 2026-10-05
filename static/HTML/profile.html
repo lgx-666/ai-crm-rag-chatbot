@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>个人信息 - AI知识助手</title>
+    <link rel="stylesheet" href="/static/CSS/profile.css">
+</head>
+
+<body>
+    <div class="profile-container">
+        <h2>👤 个人信息</h2>
+        <div class="user-info-display" id="userDisplay"></div>
+        <input type="text" id="nameInput" placeholder="姓名" />
+        <input type="number" id="ageInput" placeholder="年龄" />
+        <input type="text" id="occupationInput" placeholder="职业" />
+        <input type="text" id="interestInput" placeholder="兴趣" />
+        <button class="btn-primary" id="saveBtn">保存修改</button>
+        <div id="saveMsg" class="save-msg"></div>
+        <div class="action-row">
+            <a href="/chat_page">← 返回聊天</a>
+            <button id="logoutBtn">退出</button>
+        </div>
+    </div>
+    <script src="/static/JS/profile.js"></script>
+</body>
+
+</html>
