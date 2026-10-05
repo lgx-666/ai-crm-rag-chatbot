@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 知识助手</title>
+    <!-- 正确引用 CSS（路径为 /static/CSS/chat.css） -->
+    <link rel="stylesheet" href="/static/CSS/chat.css">
+</head>
+
+<body>
+    <div class="chat-container">
+        <header class="chat-header">
+            <h1>🤖 AI 知识助手</h1>
+            <p>大模型原理 · Java 后端核心 · 知识问答</p>
+            <!-- 用户栏：显示手机号、个人信息、退出 -->
+            <div class="user-bar">
+                <span id="userDisplay"></span>
+                <a href="/profile">个人信息</a>
+                <button id="logoutBtn">退出</button>
+            </div>
+        </header>
+
+        <main class="chat-messages" id="chatMessages">
+            <!-- 初始欢迎消息 -->
+            <div class="message assistant">
+                <div class="avatar">AI</div>
+                <div class="bubble">您好！我是 AI 知识助手，可以为您解答大模型和 Java 后端开发的相关问题。</div>
+            </div>
+        </main>
+
+        <div class="typing-indicator" id="typingIndicator">AI 正在思考...</div>
+        <div class="error-message" id="errorMessage"></div>
+
+        <div class="chat-input-area">
+            <input type="text" id="userInput" placeholder="输入您的问题..." />
+            <button id="sendButton">发送</button>
+        </div>
+    </div>
+
+    <!-- 引用 JS（路径为 /static/JS/chat.js） -->
+    <script src="/static/JS/chat.js"></script>
+</body>
+
+</html>

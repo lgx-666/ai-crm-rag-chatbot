@@ -1,0 +1,22 @@
+services:
+  app:
+    build:
+      context: . # 用当前目录(AI_CRM)的 Dockerfile，context=AI_CRM
+      additional_contexts:
+        # torch 那个 184MB 的 wheel 放在项目外的 docker_wheels/ 里。
+        # 原因：它在主上下文内就会被 .dockerignore 排除，而实测 .dockerignore 同样会让
+        # Dockerfile 里的 RUN --mount=type=bind 取不到文件；单独声明命名上下文 wheels，
+        # 既能挂载进来装依赖，`COPY . .` 也永远不会把它打进镜像。
+        wheels: ../docker_wheels
+    ports:
+      - "5000:5000" # 宿主5000 → 容器5000
+    env_file:
+      - .env # 运行时注入密钥（compose 在宿主读，不打进镜像）
+    environment:
+      # environment 优先级高于 env_file，用来覆盖
+      - EMBEDDING_MODEL=/app/chinese_model/BAAI/bge-base-zh-v1.5 # 把.env里的相对路径换成容器内绝对路径
+      - FLASK_DEBUG=0 # 容器里关调试模式
+    volumes:
+      - ../chinese_model:/app/chinese_model:ro # 嵌入模型，只读挂载（app 只读不写）
+      - ./data:/app/data # 向量库+SQLite 持久化，容器删了数据还在
+    restart: unless-stopped

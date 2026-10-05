@@ -1,0 +1,30 @@
+# 密钥——绝不能进镜像层（进了就能被 docker history 扒出来）
+.env
+# 运行时数据：用挂卷，不打进镜像
+data/
+logs/
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+# 测试与开发依赖：生产镜像用不到，排除掉更小更干净
+tests/
+# 兜底：旧手写脚本目录 test/ 已归档到项目外（../_archive_main_flow/legacy_test），
+# 它直连真实向量库、历史上往生产库写进过 sample_init，万一被重建也别进镜像。
+test/
+requirements-dev.txt
+.coverage
+.pytest_cache/
+# 虚拟环境（万一）
+venv/
+# 文档
+项目报告/
+*.md
+
+# 实测结论：被 .dockerignore 排除的文件，Dockerfile 里的 RUN --mount=type=bind 同样取不到
+# （build 报 failed to compute cache key ... "not found"），影响不止 COPY/ADD。
+# 所以 torch 的 wheel 不放在本项目目录，而在 ../docker_wheels/，由 compose 的
+# additional_contexts 以命名上下文 wheels 提供给构建使用。
+# 这行留着当兜底：万一有人把 wheel 又下回项目根，它不会经由 COPY . . 混进镜像，
+# 而是让 build 在装 torch 那一步明确报错，问题当场暴露而不是变成 184MB 的隐身胖层。
+*.whl
