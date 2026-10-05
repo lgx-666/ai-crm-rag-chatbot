@@ -1,5 +1,7 @@
 # AI_CRM — RAG 知识问答客服机器人（Flask + Chroma + LangChain/LangGraph）
 
+![tests](https://github.com/lgx-666/ai-crm-rag-chatbot/actions/workflows/ci.yml/badge.svg)
+
 面向大模型与 Java 后端课程资料的问答机器人：意图分类 + 主题路由检索 + SSE 流式 +
 多轮记忆（滑窗 + 滚动摘要）+ JWT 鉴权 + RAGAS 量化评估 + Docker 化。
 
