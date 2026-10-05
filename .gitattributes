@@ -1,0 +1,26 @@
+# 仓库内一律存 LF；下面这些类型强制以 LF 检出。
+# 原因：Windows 上 core.autocrlf=true 会把检出文件变成 CRLF，而 Dockerfile /
+# docker-compose.yml 带 \r 会让镜像构建与 shell 命令出现难以定位的失败
+# （典型症状是 /bin/bash^M: bad interpreter）。锁死行尾后，别人在 Windows clone
+# 也能直接 docker compose up。
+* text=auto
+
+*.py text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.cfg text eol=lf
+*.ini text eol=lf
+*.txt text eol=lf
+*.md text eol=lf
+Dockerfile text eol=lf
+.dockerignore text eol=lf
+.gitignore text eol=lf
+.env.example text eol=lf
+*.css text eol=lf
+*.js text eol=lf
+*.html text eol=lf
+
+*.png binary
+*.jpg binary
+*.whl binary
+*.db binary
