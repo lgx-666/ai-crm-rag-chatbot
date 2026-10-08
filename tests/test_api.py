@@ -65,32 +65,65 @@ def test_chat_missing_query_400(client):
     assert r.get_json()["error"] == "缺少 query 字段"
 
 # ---------- /chat SSE 管道（用假 graph 替换真 LLM）----------
+# ---------- /chat SSE 管道（用假 graph 替换真 LLM）----------
+class _RecordingFakeGraph:
+    """顶替 app.chat_graph：模拟节点里 writer 外发的 custom 数据，并记下调用参数。
+    stream() 的签名必须和真 LangGraph 对齐（app 现在多传了 config=），
+    否则埋点一接线，这里就假失败。"""
+    def __init__(self):
+        self.seen = {}
+
+    def stream(self, inputs, stream_mode=None, config=None):
+        self.seen = {"inputs": inputs, "stream_mode": stream_mode, "config": config}
+        for tok in ["你", "好", "呀"]:
+            yield {"token": tok}           # 和真 graph 的 custom 输出结构一致
+
+
+def _sse_tokens(body):
+    out = []
+    for line in body.splitlines():
+        if line.startswith("data: ") and line != "data: [DONE]":
+            out.append(json.loads(line[len("data: "):]).get("content", ""))
+    return out
+
+
 def test_chat_streams_tokens_via_sse(client, monkeypatch):
-    """核心：验证 SSE 逐 token 外发 + [DONE] 收尾，但不真调 LLM。
-    用 FakeGraph 顶替 app.chat_graph——它模拟节点里 writer 外发的 custom 数据。"""
+    """核心：验证 SSE 逐 token 外发 + [DONE] 收尾，但不真调 LLM。"""
     token = client.post("/login", json={"phone_number": "139", "password": "pw"}).get_json()["token"]
-
-    class FakeGraph:
-        def stream(self, inputs, stream_mode=None):
-            for tok in ["你", "好", "呀"]:
-                yield {"token": tok}           # 和真 graph 的 custom 输出结构一致
-
-    # patch 使用处 app.chat_graph：chat_api 的 generate() 在调用时才查这个模块全局
-    monkeypatch.setattr("app.chat_graph", FakeGraph())
+    fake = _RecordingFakeGraph()
+    sentinel = object()               # 假装它是 Langfuse handler：只验接线，不依赖机器上有没有密钥
+    monkeypatch.setattr("app.chat_graph", fake)
+    monkeypatch.setattr("app.callback_handler", lambda: sentinel)
 
     r = client.post("/chat", json={"query": "hi"},
                     headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 200
     assert r.content_type.startswith("text/event-stream")
 
-    # 解析 SSE：逐行还原 token，拼回完整答案
     body = r.get_data(as_text=True)
-    tokens = []
-    for line in body.splitlines():
-        if line.startswith("data: ") and line != "data: [DONE]":
-            tokens.append(json.loads(line[len("data: "):]).get("content", ""))
-    assert "".join(tokens) == "你好呀"          # 逐 token 累积成完整文本
-    assert "data: [DONE]" in body               # 流正常收尾
+    assert "".join(_sse_tokens(body)) == "你好呀"      # 逐 token 累积成完整文本
+    assert "data: [DONE]" in body                      # 流正常收尾
+
+    # 埋点接线：handler 存在时 callbacks 一定要传到 graph.stream
+    assert fake.seen["stream_mode"] == "custom"
+    assert fake.seen["config"] == {"callbacks": [sentinel]}
+    assert fake.seen["inputs"] == {"phone_number": "139", "query": "hi"}
+
+
+def test_chat_without_langfuse_config_passes_no_callbacks(client, monkeypatch):
+    """CI / 未配置形态：callback_handler() 返回 None 时不传 config，
+    保证没有 Langfuse 服务时行为和埋点之前完全一致。"""
+    token = client.post("/login", json={"phone_number": "139", "password": "pw"}).get_json()["token"]
+    fake = _RecordingFakeGraph()
+    monkeypatch.setattr("app.chat_graph", fake)
+    monkeypatch.setattr("app.callback_handler", lambda: None)
+
+    r = client.post("/chat", json={"query": "hi"},
+                    headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
+    assert "".join(_sse_tokens(r.get_data(as_text=True))) == "你好呀"
+    assert fake.seen["config"] is None
+
 
 # ---------- 越权隔离（API 层安全回归）----------
 def test_chat_history_isolated_by_token(client):

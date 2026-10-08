@@ -13,6 +13,7 @@ from response_generator import (
     stream_response_from_vectorstore, stream_web_search, stream_other_intents,
 )
 from function_calling_handler import handle_function_calling
+from observability import trace_meta
 from utils.logging_config import setup_logging
 
 logger = setup_logging()
@@ -50,6 +51,7 @@ def prepare(state: ChatState) -> dict:
     发不发交给闲聊分支决定：问的是实质问题就直接给答案，不塞寒暄。
     """
     phone, query = state["phone_number"], state["query"]
+    trace_meta("chat-request", phone) 
     history = fetch_chat_history(phone, limit=MEMORY_WINDOW)
     # 必须在 update_chat_history 之前数：存完这条 user 消息就不再是 0 了
     is_new_user = (count_chat_history(phone) == 0)

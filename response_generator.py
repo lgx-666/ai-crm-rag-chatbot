@@ -15,6 +15,7 @@ from config import (
 )
 from db.vector_db import query_collection
 from kb_router import retrieval_plan
+from observability import generation, usage_from
 from db.sqlite_db import (                             
     get_user_info_from_db,
     count_chat_history, get_conversation_summary,
@@ -176,21 +177,33 @@ def _stream_llm(messages, temperature, max_tokens):
     """统一的流式 LLM 调用：把 OpenAI stream 逐 token 产出。
     三个 stream_* 共用它，避免各写一遍 for-event-yield 循环。
     （它虽定义在调用者之后，但没关系：模块加载完才会真正调用，那时它早已存在。）"""
+    gen = generation("llm-stream", MODEL_NAME, messages,
+                    {"temperature": temperature, "max_tokens": max_tokens})
+    parts, usage, err = [], None, None
     try:
         stream = client.chat.completions.create(
             model=MODEL_NAME, messages=messages,
             temperature=temperature, max_tokens=max_tokens, stream=True)
         for event in stream:
             # 兼容端点的收尾 chunk 可能 choices 为空（只带 usage/结束标记），
-            # 直接取 [0] 会 IndexError，必须先跳过空 choices
+            # 直接取 [0] 会 IndexError，必须先跳过空 choices —— usage 就藏在这里
             if not event.choices:
+                if getattr(event, "usage", None) is not None:
+                    usage = event.usage
                 continue
             delta = event.choices[0].delta.content or ""
             if delta:
+                parts.append(delta)
                 yield delta
     except Exception as e:
+        err = e
         logger.error("流式生成失败: %s", e)
         yield "抱歉，我现在无法处理您的请求，请稍后再试。"
+    finally:
+        # 放在 finally：SSE 客户端中途断开时生成器会被销毁（实测收到 GeneratorExit），
+        # 不在这里收尾，Langfuse 里就会留下一条永远不结束的 span
+        gen.end("".join(parts), usage=usage_from(usage), error=err)
+
 
 # 数据库检索
 def handle_db_query(query, phone_number):

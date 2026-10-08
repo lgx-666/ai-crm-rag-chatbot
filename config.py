@@ -19,6 +19,12 @@ EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-zh-v1.5")
 # 博查搜索API配置
 BOCHA_API_KEY = os.getenv("BOCHA_API_KEY", "")
 
+# Langfuse 可观测性：三项齐全才开启埋点。CI 上没有 .env，这里全是空字符串，
+# observability.ENABLED 就是 False，所有埋点退化成空操作。
+LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "")
+LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY", "")
+LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY", "")
+
 JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-me")
 
 # 向量数据库路径
