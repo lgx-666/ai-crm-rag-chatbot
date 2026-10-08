@@ -20,6 +20,7 @@ from ragas.dataset_schema import SingleTurnSample, EvaluationDataset
 from langchain_openai import ChatOpenAI
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from datetime import datetime
+from importlib.metadata import version as _pkg_version   # 读 ragas 版本号，不用 import ragas 本体
 
 from config import OPENAI_API_KEY, OPENAI_BASE_URL, MODEL_NAME, EMBEDDING_MODEL
 from db.vector_db import init_vectorstores, query_collection
@@ -52,6 +53,12 @@ def _pick_metric_name(candidates):
 #   Q4 -> 12-多轮对话中让AI保持长期记忆的8种优化方式篇
 #   Q5 -> 18-RAG 版面分析——文本分块面
 #   Q6 -> 26-大模型（LLMs）参数高效微调(PEFT) 面
+# 2026-10-07 补的 3 题是为了覆盖旧评估集的死角：java 域 + 双域各 2 槽那条分支。
+#   Q7/Q8 -> Java 面试知识点总结.pdf（路由判为 java 单域 ×4）
+#   Q9    -> 跨域题，路由判为 (6,4) → market×2 + java×2（唯一走双查安全网的题）
+# 三道题的 reference 都不是凭直觉写的：先用 retrieval_plan 确认路由，
+# 再用本地 bge 实跑检索，只把"确实会被检回的块"里的事实写进 reference，
+# 否则 context_recall 测的就是我编的题而不是线上链路。
 QUESTIONS = [
     ("RAG-Fusion 是怎么做的？RRF 起什么作用？",
     "RAG-Fusion 用来解决单一查询的局限：用户不擅长向搜索系统表达意图，线性地把查询映射到答案会漏掉顶部结果之外的信息。"
@@ -125,6 +132,39 @@ QUESTIONS = [
     "与全量微调的区别：LoRA 这类低秩方法本来就只能改变风格、难以对模型产生决定性改变，全量微调才可以改变知识；实测上 FT 效果稍好于 LoRA，而 AdaLoRA 效果稍好于 FT。"
     "选型：P-Tuning v2、LoRA 综合评估不错，显存有限可考虑 QLoRA，简单任务可用 P-Tuning、Prompt Tuning。"
     "现存问题：相比全参数微调，大部分高效微调技术推理速度会变慢、模型精度会变差；且因参数计算口径不一致、缺乏对模型大小的考虑、缺少统一测量基准与评价标准、代码可读性差，不同方法之间难以直接比较。"),
+
+    ("ConcurrentHashMap 的实现原理是什么？为什么它读数据不需要加锁？",
+    "ConcurrentHashMap 是支持并发读写的 HashMap。"
+    "它的特点是读取数据时无需加锁，写数据时可以保证加锁粒度尽可能的小；"
+    "之所以能做到这一点，是因为其内部采用“分段存储”，"
+    "只需对要进行写操作的数据所在的“段”进行加锁，"
+    "因此不同段上的写操作互不影响，读取又不必与这些细粒度写锁争抢同一把锁。"
+    "作为对照：HashMap 的底层实现是“基于拉链法的散列表”，但它不支持并发读写；"
+    "HashTable 是线程安全的而 HashMap 不是，HashMap 允许 null 键和 null 值而 HashTable 不允许。"),
+
+    ("wait() 和 sleep() 有什么区别？调用它们时锁会不会被释放？",
+    "wait() 是 Object 类中定义的实例方法；sleep() 是 Thread 类中的静态方法——这是两者的第一个区别。"
+    "在指定对象上调用 wait 方法会让当前线程进入等待状态，前提是当前线程持有该对象的 monitor；"
+    "关键差异在于：调用 wait 时当前线程会释放相应对象的 monitor，"
+    "这样一来其它线程便有机会获取这个对象的 monitor；"
+    "当其它线程获取了该对象的 monitor 并进行了所需操作时，便可以调用 notify 方法唤醒之前进入等待状态的线程。"
+    "而 sleep() 的作用是让当前线程进入休眠状态，以便让其他线程有机会执行，"
+    "进入休眠状态的线程不会释放它所持有的锁。"),
+
+    ("RAG 服务如果用 Java 写成多线程常驻进程，synchronized 锁住的到底是什么？"
+    "我们这条向量检索链路（文档入库、query 向量化、召回 top_k、拼 prompt）又是怎么走的？",
+    "Java 侧：synchronized 可以来对一个代码块或是对一个方法上锁，被“锁住”的地方称为临界区，"
+    "进入临界区的线程会获取对象的 monitor，这样其他尝试进入临界区的线程会因无法获取 monitor 而被阻塞；"
+    "由于等待另一个线程释放 monitor 而被阻塞的线程无法被中断。"
+    "作为对比，ReentrantLock 的特点是尝试获取锁的线程可以被中断并可以设置超时参数；"
+    "Java 中可以对类、对象、方法或是代码块上锁，即锁有不同粒度。"
+    "检索链路侧：常规检索一般是把 reference 数据都先 Embedding 入库，"
+    "服务阶段 query 进来后再做 Embedding，然后快速在库中查询相似 top_k；"
+    "完整流程是用户 query 向量化后用 ANN 检索召回 raw text 和 raw table，"
+    "再根据 query+raw text+raw table 构造完整 prompt，访问 LLM 生成最终结果。"
+    "这条链路能不能答对，取决于入库的内容：当实际答案不在知识库中时，"
+    "RAG 系统往往给出一个貌似合理却错误的答案而不是承认无法给出答案，"
+    "即“输入什么，输出什么”，源数据质量差时无论如何构建 RAG 流程都得不到好结果。"),
 ]
 
 
@@ -190,20 +230,53 @@ def main():
     ctx_recall = _pick_metric_name(_CTX_RECALL_NAMES)()
     ctx_recall.llm = llm
 
+    # 并发与超时先命名再传：它们要作为落款写进 csv，否则一周后没人知道这份分数是哪档跑出来的。
+    # max_workers 实测出来的，不是拍的：2026-10-07 用 1952prompt/600~950completion
+    # 这种接近裁判负载的请求打百炼，4 并发总耗时 17.5s vs 串行 4 次约 95s（≈5.4x），
+    # 单请求延迟没有随并发变差，也没有 429/TPM 限流。
+    # 9-27 那次降到 1 是因为 timeout=180 会把长答案的 job 掐死，不是并发本身的问题；
+    # timeout 顺带抬到 900 做保险——实测第一个 faithfulness job 就要 501s，离 600 只差 99s。
+    # 但 10-07 主跑（4 并发 × 900s）仍掐死了 7 格，全是长答案的 faithfulness；
+    # 补跑换 2 并发 × 1800s 后 7/7 全通 —— 慢模型上并发是风险，不是收益。
+    MAX_WORKERS = 4
+    TIMEOUT = 900
     result = evaluate(
         dataset,
         metrics=[faithfulness, relevancy, ctx_precision, ctx_recall],
-        run_config=RunConfig(max_workers=1, timeout=600),
+        run_config=RunConfig(max_workers=MAX_WORKERS, timeout=TIMEOUT),
     )
 
     print("\n===== RAGAS 总分（0~1，越高越好）=====")
     print(result)
 
     df = result.to_pandas()
+
+    # 落款：把"用什么尺子量的"写进每一行。10-03 那份用 qwen-plus 当裁判、10-07 这份用
+    # MODEL_NAME，csv 里都没记，隔一周就没人确定自己比的是不是同一把尺子。
+    df["judge_model"] = MODEL_NAME        # 打分用的模型
+    df["answer_model"] = MODEL_NAME       # 生成答案用的模型，目前和裁判共用同一个开关
+    df["max_workers"] = MAX_WORKERS
+    df["timeout"] = TIMEOUT
+    df["ragas_version"] = _pkg_version("ragas")
+    ts = datetime.now()                   # 时间戳只取一次：文件名和 run_at 必须同一刻
+    df["run_at"] = ts.strftime("%Y-%m-%d %H:%M:%S")
+
     # 带时间戳落盘，不覆盖历史结果：改前基线是唯一的对照物，一旦被覆盖就无法复现（项目没有 git 兜底）。
-    out_path = f"data/ragas_report_{datetime.now():%Y%m%d_%H%M%S}.csv"
+    out_path = f"data/ragas_report_{ts:%Y%m%d_%H%M%S}.csv"
     df.to_csv(out_path, index=False, encoding="utf-8-sig")
     print("\n逐条明细已写入 " + out_path)
+
+    # 均值必须带 n：ragas 把打分失败的格子留成 NaN 并在求均值时剔出分母，
+    # 只看 mean 会把"7 格没算出来"读成"质量很好"（10-07 实测 faithfulness 虚高 0.0927）。
+    print("\n===== 四指标 mean 与 n（n 不等于题数就是缺格）=====")
+    for c in ["faithfulness", "answer_relevancy",
+                "llm_context_precision_with_reference", "context_recall"]:
+        if c in df.columns:
+            s = df[c].astype(float)
+            print(f"  {c:38} mean={s.mean():.4f}  n={s.notna().sum()}/{len(df)}")
+        else:
+            print(f"  [!] 这一版 ragas 没有列 {c}，实际列名：{list(df.columns)}")
+
     print(df.to_string())
 
 
