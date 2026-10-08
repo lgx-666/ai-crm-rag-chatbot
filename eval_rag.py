@@ -238,8 +238,8 @@ def main():
     # timeout 顺带抬到 900 做保险——实测第一个 faithfulness job 就要 501s，离 600 只差 99s。
     # 但 10-07 主跑（4 并发 × 900s）仍掐死了 7 格，全是长答案的 faithfulness；
     # 补跑换 2 并发 × 1800s 后 7/7 全通 —— 慢模型上并发是风险，不是收益。
-    MAX_WORKERS = 4
-    TIMEOUT = 900
+    MAX_WORKERS = 2
+    TIMEOUT = 1800
     result = evaluate(
         dataset,
         metrics=[faithfulness, relevancy, ctx_precision, ctx_recall],
@@ -270,7 +270,7 @@ def main():
     # 只看 mean 会把"7 格没算出来"读成"质量很好"（10-07 实测 faithfulness 虚高 0.0927）。
     print("\n===== 四指标 mean 与 n（n 不等于题数就是缺格）=====")
     for c in ["faithfulness", "answer_relevancy",
-                "llm_context_precision_with_reference", "context_recall"]:
+              "llm_context_precision_with_reference", "context_recall"]:
         if c in df.columns:
             s = df[c].astype(float)
             print(f"  {c:38} mean={s.mean():.4f}  n={s.notna().sum()}/{len(df)}")

@@ -16,6 +16,7 @@ services:
       # environment 优先级高于 env_file，用来覆盖
       - EMBEDDING_MODEL=/app/chinese_model/BAAI/bge-base-zh-v1.5 # 把.env里的相对路径换成容器内绝对路径
       - FLASK_DEBUG=0 # 容器里关调试模式
+      - ANONYMIZED_TELEMETRY=False # 静音 chromadb 的 posthog 遥测上报（网络不通时刷 ERROR 噪音）
     volumes:
       - ../chinese_model:/app/chinese_model:ro # 嵌入模型，只读挂载（app 只读不写）
       - ./data:/app/data # 向量库+SQLite 持久化，容器删了数据还在

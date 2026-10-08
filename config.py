@@ -1,12 +1,13 @@
 # config.py
 import os
+import secrets
 from dotenv import load_dotenv  # 若未安装 python-dotenv，可删除此行
 
 # 加载 .env 文件（如果存在）
 load_dotenv()
 
 # 数据存储根目录
-DATA_DIR = "./data"
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # OpenAI 配置（从环境变量读取）
@@ -14,7 +15,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "your-api-key-here")
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "gpt-3.5-turbo")
 
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-zh-v1.5")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-base-zh-v1.5")
 
 # 博查搜索API配置
 BOCHA_API_KEY = os.getenv("BOCHA_API_KEY", "")
@@ -25,7 +26,11 @@ LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "")
 LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY", "")
 LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY", "")
 
-JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-me")
+JWT_SECRET = os.getenv("JWT_SECRET")
+if not JWT_SECRET:
+    JWT_SECRET = secrets.token_hex(32)
+    print("[警告] 未设置 JWT_SECRET，本次启动使用随机密钥："
+        "服务重启后所有 token 失效，且多 worker 部署会导致会话不互通。")
 
 # 向量数据库路径
 # 向量库持久化目录：chroma_db_v2 由修复后的切块算法重建，旧的碎片库已清理。
