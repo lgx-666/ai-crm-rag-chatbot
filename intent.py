@@ -21,22 +21,27 @@ def parse_intent(raw: str) -> int:
     return 0
 
 def detect_intent_code(query: str) -> int:
+    from observability import generation, usage_from    # 意图调用是裸 openai client，不在 LangChain 体系内，要手工记
     prompt = PROMPT_TEMPLATES["intent_prompt"].format(query=query)
+    msgs = [{"role": "user", "content": prompt}]
+    gen = generation("intent-classify", MODEL_NAME, msgs,
+                    {"temperature": 0, "max_tokens": 10})
     try:
         # 调用AI模型 API
         response = client.chat.completions.create(
             model=MODEL_NAME,
             # 构造对话消息列表
-            messages=[{"role": "user", "content": prompt}],
+            messages=msgs,
             # 控制生成文本的随机性。设为 0 表示确定性输出，即每次调用相同输入会得到最可能的结果（贪心解码）。
             temperature=0,
             # 限制模型输出最多 10 个 token（约 7-10 个字符）。
             max_tokens=10
         )
-        # 解析模型输出
-        # response.choices[0].message.content：从 API 响应中提取模型生成的文本内容（即意图编号的字符串，可能包含多余空格或换行）。
         result = response.choices[0].message.content
+        gen.end(result, usage=usage_from(getattr(response, "usage", None)))
         return parse_intent(result)      # ← 解析交给纯函数
     except Exception as e:
         logger.error("意图识别失败: %s", e)
+        gen.end(None, error=e)
         return 0
+

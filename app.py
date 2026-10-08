@@ -12,6 +12,7 @@ from db.vector_db import (init_vectorstores, add_documents_to_collection, get_ma
                         get_course_collection
 )
 from graph_flow import chat_graph
+from observability import callback_handler
 from utils.logging_config import setup_logging
 from file_loader import load_and_chunk_file
 
@@ -123,10 +124,14 @@ def chat_api():
         return jsonify({"error": "缺少 query 字段"}), 400
 
     def generate():
+        handler = callback_handler()      # 没配 Langfuse 时是 None
         try:
             # stream_mode="custom"：只收节点里 writer(...) 外发的自定义数据（即逐 token）
+            # config.callbacks：LangGraph 会把这条链的每个节点开成一个 span，
+            # 并自动下传给节点内的 LangChain 调用（db/fc 两个 Agent 因此不用单独埋）
             for chunk in chat_graph.stream({"phone_number": phone_number, "query": query},
-                                        stream_mode="custom"):
+                                        stream_mode="custom",
+                                        config={"callbacks": [handler]} if handler else None):
                 tok = chunk.get("token", "")
                 if tok:
                     yield f"data: {json.dumps({'content': tok}, ensure_ascii=False)}\n\n"
