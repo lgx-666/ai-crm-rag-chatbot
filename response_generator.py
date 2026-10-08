@@ -118,8 +118,11 @@ def stream_other_intents(query, phone_number, history=None, summary=""):
         user_info_str = "新用户"
     
     # 2. 构建提示词（无知识库）
-    system_prompt = f"你是一个友好的技术助手。用户信息：{user_info_str}。请恰当回复用户。"
-
+    system_prompt = (
+        f"你是「AI 知识助手」，一个面向大模型原理与 Java 后端知识的客服机器人。"
+        f"回答闲聊时保持这个产品身份，不要自称任何底层大模型名称。"
+        f"用户信息：{user_info_str}。请恰当回复用户。"
+    )
     yield from _stream_llm(build_messages(system_prompt, history, query, summary), 0.7, 300)
 
 
