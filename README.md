@@ -61,4 +61,7 @@ docker compose up -d --build        :: 数据在 ./data，模型只读挂载 ../
 ## 安全
 
 `.env` 已被忽略，切勿提交；`data/crm.db` 含真实用户数据，同样不入库
-（`.gitignore` 用 `data/*` + `!data/ragas_report_*.csv` 只放行评估报告）。
+（`.gitignore` 用 `data/*` 把整个数据目录挡在仓库外）。评估报告
+`data/ragas_report_*.csv` **同样不公开**——它的 `retrieved_contexts` / `reference` 两列是
+课程 PDF 的原文块，放进公开仓库等于把课程材料发出去；对外只给聚合分数，
+见 `项目报告/项目报告.md` 的 3.3 与 3.3.1 两张表。
