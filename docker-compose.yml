@@ -17,7 +17,23 @@ services:
       - EMBEDDING_MODEL=/app/chinese_model/BAAI/bge-base-zh-v1.5 # 把.env里的相对路径换成容器内绝对路径
       - FLASK_DEBUG=0 # 容器里关调试模式
       - ANONYMIZED_TELEMETRY=False # 静音 chromadb 的 posthog 遥测上报（网络不通时刷 ERROR 噪音）
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
     volumes:
       - ../chinese_model:/app/chinese_model:ro # 嵌入模型，只读挂载（app 只读不写）
       - ./data:/app/data # 向量库+SQLite 持久化，容器删了数据还在
+    restart: unless-stopped
+    # 问答缓存后端。故意不写 ports:：缓存 value 里存的是完整答案文本，
+    # 没必要把 6379 暴露到局域网；容器之间靠 compose 网络用服务名 redis 访问就够了。
+  redis:
+    image: redis:7-alpine
+    # 关掉所有持久化：缓存丢了可以重新生成，不值得为它落盘和管卷
+    command: [ "redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "64mb", "--maxmemory-policy", "allkeys-lru" ]
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
     restart: unless-stopped

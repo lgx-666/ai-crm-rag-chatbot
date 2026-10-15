@@ -16,3 +16,4 @@ pypdf==4.3.1
 requests==2.32.3
 python-dotenv==1.0.1
 langfuse==3.7.0
+redis==5.2.1

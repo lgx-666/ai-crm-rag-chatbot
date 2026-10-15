@@ -26,6 +26,10 @@ LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "")
 LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY", "")
 LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY", "")
 
+# 问答缓存（Redis）：只由 docker-compose 的 environment 注入。
+# 宿主 venv 和 CI 都没有这个变量 => 空字符串 => qa_cache 整体退化成 no-op。
+REDIS_URL = os.getenv("REDIS_URL", "")
+
 JWT_SECRET = os.getenv("JWT_SECRET")
 if not JWT_SECRET:
     JWT_SECRET = secrets.token_hex(32)
