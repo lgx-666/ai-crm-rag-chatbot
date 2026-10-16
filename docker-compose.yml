@@ -16,7 +16,7 @@ services:
       # environment 优先级高于 env_file，用来覆盖
       - EMBEDDING_MODEL=/app/chinese_model/BAAI/bge-base-zh-v1.5 # 把.env里的相对路径换成容器内绝对路径
       - FLASK_DEBUG=0 # 容器里关调试模式
-      - ANONYMIZED_TELEMETRY=False # 静音 chromadb 的 posthog 遥测上报（网络不通时刷 ERROR 噪音）
+      - ANONYMIZED_TELEMETRY=False # 只表达"不上报"的意图，不承诺静音：实测 chromadb 0.5.3 仍会刷 posthog 的 capture() 参数不兼容报错，那是它自身版本问题、与网络无关，无害但会一直在日志里
       - REDIS_URL=redis://redis:6379/0
     depends_on:
       redis:

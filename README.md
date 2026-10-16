@@ -3,7 +3,8 @@
 ![tests](https://github.com/lgx-666/ai-crm-rag-chatbot/actions/workflows/ci.yml/badge.svg)
 
 面向大模型与 Java 后端课程资料的问答机器人：意图分类 + 主题路由检索 + SSE 流式 +
-多轮记忆（滑窗 + 滚动摘要）+ JWT 鉴权 + RAGAS 量化评估 + Docker 化。
+多轮记忆（滑窗 + 滚动摘要）+ JWT 鉴权 + RAGAS 量化评估 + Langfuse 自托管埋点 +
+Redis 问答缓存 + Docker 化。
 
 ## 目录结构约定（重要）
 
@@ -36,7 +37,7 @@ python import_knowledge.py ../knowledge/java java_knowledge
 ## 测试与评估
 
 ```
-python -m pytest              :: 55 用例；覆盖率范围见 pytest.ini
+python -m pytest              :: 76 用例；覆盖率 91%，分母故意只圈三个纯逻辑模块，范围见 pytest.ini
 python eval_rag.py            :: RAGAS 四指标，会调用付费 LLM，结果落 data/ragas_report_<时间戳>.csv
 ```
 
@@ -65,3 +66,7 @@ docker compose up -d --build        :: 数据在 ./data，模型只读挂载 ../
 `data/ragas_report_*.csv` **同样不公开**——它的 `retrieved_contexts` / `reference` 两列是
 课程 PDF 的原文块，放进公开仓库等于把课程材料发出去；对外只给聚合分数，
 见 `项目报告/项目报告.md` 的 3.3 与 3.3.1 两张表。
+
+**图片同样是审查对象**：`项目报告/images/` 里的 PNG 会随仓库公开，而截图最容易漏的恰好是
+手机号、密钥这类账号信息——`git check-ignore` 只看文件名，对像素是盲的。拍图前先切到测试账号；
+提交前用 `git log --oneline -- 项目报告/images` 复核哪些图已经在远端。
