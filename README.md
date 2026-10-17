@@ -69,4 +69,4 @@ docker compose up -d --build        :: 数据在 ./data，模型只读挂载 ../
 
 **图片同样是审查对象**：`项目报告/images/` 里的 PNG 会随仓库公开，而截图最容易漏的恰好是
 手机号、密钥这类账号信息——`git check-ignore` 只看文件名，对像素是盲的。拍图前先切到测试账号；
-提交前用 `git log --oneline -- 项目报告/images` 复核哪些图已经在远端。
+提交前用 `git log --oneline -- 项目报告/images` 复核哪些图已经在远端。**改图再提交只修 HEAD**：旧提交里的原图按 SHA 照样能下载（实测强推之后仍返回 200，要等 GitHub 后台回收不可达对象）。彻底处置 = `git filter-repo --invert-paths --path-glob "*.png"` 把路径从全部历史剔除 + `--force-with-lease` 强推 + 本地 `git gc --prune=now`（重加 `origin` 后一次 `git fetch` 会把旧历史连敏感 blob 一起拉回来，这步不能省）。
