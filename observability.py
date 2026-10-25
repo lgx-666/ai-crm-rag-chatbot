@@ -50,12 +50,17 @@ class _Generation:
     def __init__(self, obs):
         self._obs, self._done = obs, False
 
-    def end(self, output, usage=None, error=None):
+    def end(self, output, usage=None, error=None, metadata=None):
         if self._obs is None or self._done:
             return
         self._done = True
         try:
             self._obs.update(output=output)
+            if metadata:
+                try:
+                    self._obs.update(metadata=metadata)   # 新参数名单独 try：不支持就只丢元数据
+                except Exception:
+                    pass
             if error is not None:
                 self._obs.update(level="ERROR", status_message=str(error)[:300])
             if usage:
@@ -75,3 +80,21 @@ def generation(name, model, messages, parameters=None):
         return _Generation(obs)
     except Exception:
         return _Generation(None)
+    
+
+class _Span(_Generation):
+    """检索这类"不花 token 但花时间"的步骤：与 _Generation 同一套收尾，只是没有 usage。"""
+
+    def end(self, output=None, usage=None, error=None, metadata=None):
+        super().end(output, usage=usage, error=error, metadata=metadata)
+
+
+def span(name, input=None):
+    """挂到当前节点的 span 下（与 generation() 同一条已实测的嵌套路径，只换 as_type）。
+    没开启埋点时返回空操作对象，调用方不用写 if。"""
+    if not ENABLED:
+        return _Span(None)
+    try:
+        return _Span(Langfuse().start_observation(name=name, as_type="span", input=input))
+    except Exception:
+        return _Span(None)    

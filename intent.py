@@ -1,7 +1,7 @@
 # intent.py
 import re
 from openai import OpenAI
-from config import OPENAI_API_KEY, OPENAI_BASE_URL, MODEL_NAME, PROMPT_TEMPLATES
+from config import OPENAI_API_KEY, OPENAI_BASE_URL, MODEL_NAME, PROMPT_TEMPLATES, QWEN_DISABLE_THINKING
 from utils.logging_config import setup_logging
 
 logger = setup_logging()
@@ -26,16 +26,19 @@ def detect_intent_code(query: str) -> int:
     msgs = [{"role": "user", "content": prompt}]
     gen = generation("intent-classify", MODEL_NAME, msgs,
                     {"temperature": 0, "max_tokens": 10})
+    # 实测 2026-10-25：百炼兼容端点只认 extra_body，顶层 enable_thinking 直接 TypeError；
+    # 生效后 completion 86→44、可见正文反而 61→73 字（_lab_thinking_probe.py 三变体对照）。
+    # 这里关它零风险：思考产出的 reasoning_content 本来就被丢掉，而 baseline 实测烧掉 105 token。
+    kwargs = {}
+    if QWEN_DISABLE_THINKING:
+        kwargs["extra_body"] = {"enable_thinking": False}
     try:
-        # 调用AI模型 API
         response = client.chat.completions.create(
             model=MODEL_NAME,
-            # 构造对话消息列表
             messages=msgs,
-            # 控制生成文本的随机性。设为 0 表示确定性输出，即每次调用相同输入会得到最可能的结果（贪心解码）。
             temperature=0,
-            # 限制模型输出最多 10 个 token（约 7-10 个字符）。
-            max_tokens=10
+            max_tokens=10,
+            **kwargs
         )
         result = response.choices[0].message.content
         gen.end(result, usage=usage_from(getattr(response, "usage", None)))

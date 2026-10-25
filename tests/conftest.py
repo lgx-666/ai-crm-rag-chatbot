@@ -1,4 +1,13 @@
 # tests/conftest.py
+# 测试环境必须关掉 Langfuse 埋点：宿主 .env 里三键齐全 ⇒ observability.ENABLED=True，
+# 用例里每次 generation 都会在解释器退出时往 host.docker.internal:3030 刷 span，
+# 而这个域名只在容器内可解析 ⇒ 宿主上必然 getaddrinfo 失败，
+# 又赶上 pytest 已关闭捕获流，于是打一串 ValueError: I/O operation on closed file。
+# ENABLED 在 import 时就算死了，所以清空必须排在任何会 import config 的语句之前。
+import os
+for _k in ("LANGFUSE_HOST", "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY"):
+    os.environ[_k] = ""
+
 import pytest
 import db.sqlite_db as db
 

@@ -68,3 +68,4 @@ PROMPT_TEMPLATES = {
         "只输出数字编号（0/1/2/3/4）。"
     )
 }
+QWEN_DISABLE_THINKING = os.getenv("QWEN_DISABLE_THINKING", "false").strip().lower() in ("1", "true", "yes", "on")

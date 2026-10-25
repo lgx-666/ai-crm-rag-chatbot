@@ -1,6 +1,7 @@
 # response_generator.py
 
 import sqlite3
+import time
 from sqlalchemy import create_engine, text
 from sqlalchemy.pool import StaticPool
 from langchain_community.utilities import SQLDatabase
@@ -11,11 +12,12 @@ from openai import OpenAI
 from config import (
     OPENAI_API_KEY, OPENAI_BASE_URL, MODEL_NAME, BOCHA_API_KEY, 
     SQLITE_DB_PATH,
-    MEMORY_WINDOW, MEMORY_MAX_CHARS, SUMMARY_THRESHOLD      # ← 记忆编排用得到，摘 COLLECTION 时别把它们一起带走
+    MEMORY_WINDOW, MEMORY_MAX_CHARS, SUMMARY_THRESHOLD,      # ← 记忆编排用得到，摘 COLLECTION 时别把它们一起带走
+    QWEN_DISABLE_THINKING,
 )
 from db.vector_db import query_collection
 from kb_router import retrieval_plan
-from observability import generation, usage_from
+from observability import generation, usage_from,span
 from db.sqlite_db import (                             
     get_user_info_from_db,
     count_chat_history, get_conversation_summary,
@@ -63,14 +65,18 @@ def stream_response_from_vectorstore(query, phone_number, history=None, summary=
     #    所以 Java 问题即使检到正文也只能落在 [3][4]。
     #    现在不该参与的集合整个不查：跨域槽 50% → 0%，目标文档回到 [1]。
     pairs = []
-    for coll_name, k in retrieval_plan(query):
+    plan = retrieval_plan(query)
+    sp = span("retrieval", {"query": query, "plan": [[c, k] for c, k in plan]})
+    for coll_name, k in plan:
         try:
             docs, metas = query_collection(coll_name, query, n_results=k)
             pairs.extend(zip(docs, metas))
         except Exception as e:
             # 单个集合检索失败只少一份参考材料，不该让整个回答挂掉
             logger.error("知识库检索失败(%s): %s", coll_name, e)
-
+    sp.end({"chunks": len(pairs), "chars": sum(len(d) for d, _ in pairs),
+            "sources": [(m or {}).get("source", "") for _, m in pairs]})
+            
     # 2. 按文档文本去重（相同内容只留一份，并保留它的来源）
     seen, unique_pairs = set(), []
     for doc, meta in pairs:
@@ -183,6 +189,8 @@ def _stream_llm(messages, temperature, max_tokens):
     gen = generation("llm-stream", MODEL_NAME, messages,
                     {"temperature": temperature, "max_tokens": max_tokens})
     parts, usage, err = [], None, None
+    t0 = time.perf_counter()
+    ttft = None                       # 首 token 时间：把"排队/握手慢"和"生成慢"分开
     try:
         stream = client.chat.completions.create(
             model=MODEL_NAME, messages=messages,
@@ -196,6 +204,8 @@ def _stream_llm(messages, temperature, max_tokens):
                 continue
             delta = event.choices[0].delta.content or ""
             if delta:
+                if ttft is None:
+                    ttft = time.perf_counter() - t0
                 parts.append(delta)
                 yield delta
     except Exception as e:
@@ -205,7 +215,10 @@ def _stream_llm(messages, temperature, max_tokens):
     finally:
         # 放在 finally：SSE 客户端中途断开时生成器会被销毁（实测收到 GeneratorExit），
         # 不在这里收尾，Langfuse 里就会留下一条永远不结束的 span
-        gen.end("".join(parts), usage=usage_from(usage), error=err)
+        gen.end("".join(parts), usage=usage_from(usage), error=err,
+                metadata={"ttft_ms": round(ttft * 1000, 1) if ttft is not None else None,
+                        "total_ms": round((time.perf_counter() - t0) * 1000, 1),
+                        "chars": sum(len(p) for p in parts), "deltas": len(parts)})
 
 
 # 数据库检索
@@ -263,15 +276,25 @@ def update_and_get_summary(phone_number: str) -> str:
         "保留关键事实（用户身份/需求、讨论过的技术点、结论）。不要遗漏重要信息，不要编造。\n\n"
         f"【已有摘要】\n{summary or '（无）'}\n\n【新增对话】\n{convo}\n\n只输出更新后的摘要："
     )
+    gen = generation("summary", MODEL_NAME, [{"role": "user", "content": prompt}],
+                {"temperature": 0.3, "max_tokens": 500})
+    # 摘要只是写进 conversation_summary 的内部记忆，不是给用户看的内容，
+    # 所以关思考零风险：实测它输出 970 token 里只有 307 字真正落到摘要表。
+    kwargs = {}
+    if QWEN_DISABLE_THINKING:
+        kwargs["extra_body"] = {"enable_thinking": False}
     try:
         resp = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.3, max_tokens=500
+            temperature=0.3, max_tokens=500,
+            **kwargs
         )
         new_summary = resp.choices[0].message.content.strip()
         save_conversation_summary(phone_number, new_summary, new_upto)   # 存库并推进游标
+        gen.end(new_summary, usage=usage_from(resp.usage))
         return new_summary
     except Exception as e:
+        gen.end(error=str(e))
         logger.error("历史摘要压缩失败: %s", e)
         return summary        # 压缩失败不影响主流程，退回旧摘要
