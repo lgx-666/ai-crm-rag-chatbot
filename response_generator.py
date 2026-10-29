@@ -2,6 +2,7 @@
 
 import sqlite3
 import time
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import create_engine, text
 from sqlalchemy.pool import StaticPool
 from langchain_community.utilities import SQLDatabase
@@ -170,13 +171,16 @@ def stream_web_search(query, phone_number, history=None, summary=""):
         context += "\n"
     
     # 调用大模型生成最终回答
+    today = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d")
     system_prompt = (
+        f"当前日期是 {today}（东八区）。用户说的“今天”就是这一天。\n"
         "你是一个专业的技术知识助手。请根据以下网络搜索结果，回答用户的问题。\n"
         "要求：\n"
         "1. 综合多个搜索结果，给出全面准确的回答\n"
         "2. 如果搜索结果有矛盾，请说明不同来源的观点\n"
         "3. 如果搜索结果不足以回答问题，请如实告知用户\n"
-        "4. 引用搜索结果时，请标注来源\n\n"
+        "4. 引用搜索结果时，请标注来源\n"
+        "5. 搜索结果里出现的日期不等于今天；判断信息是否“实时”一律以上面的当前日期为准\n\n"
         f"{context}"
     )
 
