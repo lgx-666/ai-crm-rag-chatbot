@@ -195,10 +195,16 @@ def _stream_llm(messages, temperature, max_tokens):
     parts, usage, err = [], None, None
     t0 = time.perf_counter()
     ttft = None                       # 首 token 时间：把"排队/握手慢"和"生成慢"分开
+    # 层级②：主生成也关思考。与 intent/summary 共用 QWEN_DISABLE_THINKING，
+    # 出问题时改 .env 那一个布尔值就能回滚，不必改代码。
+    kwargs = {}
+    if QWEN_DISABLE_THINKING:
+        kwargs["extra_body"] = {"enable_thinking": False}
     try:
         stream = client.chat.completions.create(
             model=MODEL_NAME, messages=messages,
-            temperature=temperature, max_tokens=max_tokens, stream=True)
+            temperature=temperature, max_tokens=max_tokens, stream=True,
+            **kwargs)
         for event in stream:
             # 兼容端点的收尾 chunk 可能 choices 为空（只带 usage/结束标记），
             # 直接取 [0] 会 IndexError，必须先跳过空 choices —— usage 就藏在这里

@@ -45,3 +45,58 @@ def test_开关关闭时完全不传extra_body(monkeypatch):
     assert intent.detect_intent_code("什么是RAG") == 1
     # 默认必须"不改变现有行为"：没开开关时，请求体和改动前逐字一致
     assert "extra_body" not in captured[0]
+    
+
+# 层级②：主生成 llm-stream 那一路。传错位置不会报错、只会静默多想，
+# 所以要像 intent 一样断言"参数确实以 extra_body 出现在请求体里"。
+import response_generator
+
+
+class _FakeStream:
+    """照真实端点的事件形状：若干正文 chunk + 一个 choices 为空的收尾 chunk（usage 藏在这里）。"""
+
+    def __init__(self):
+        self._events = [
+            SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content="你"))]),
+            SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content="好"))]),
+            SimpleNamespace(choices=[], usage=SimpleNamespace(
+                prompt_tokens=10, completion_tokens=2, total_tokens=12)),
+        ]
+
+    def __iter__(self):
+        return iter(self._events)
+
+
+def _stub_stream(monkeypatch, flag):
+    captured = []
+
+    def fake_create(**kwargs):
+        captured.append(kwargs)
+        return _FakeStream()
+
+    monkeypatch.setattr(response_generator, "QWEN_DISABLE_THINKING", flag)
+    monkeypatch.setattr(response_generator.client, "chat",
+                        SimpleNamespace(completions=SimpleNamespace(create=fake_create)))
+    return captured
+
+
+def test_主生成开关打开时也以extra_body关闭思考(monkeypatch):
+    captured = _stub_stream(monkeypatch, True)
+
+    text = "".join(response_generator._stream_llm(
+        [{"role": "user", "content": "hi"}], 0.5, 800))
+
+    assert text == "你好"
+    assert captured[0]["extra_body"] == {"enable_thinking": False}
+    assert captured[0]["stream"] is True
+    assert captured[0]["temperature"] == 0.5
+    assert captured[0]["max_tokens"] == 800
+
+
+def test_主生成开关关闭时请求体与改动前一致(monkeypatch):
+    captured = _stub_stream(monkeypatch, False)
+
+    "".join(response_generator._stream_llm(
+        [{"role": "user", "content": "hi"}], 0.5, 800))
+
+    assert "extra_body" not in captured[0]
