@@ -2,6 +2,7 @@
 # ENABLED 为 False 时下面每个函数都返回空操作对象，pytest / GitHub CI 不会因为
 # 没有 Langfuse 服务而失败，连一行多余日志都不会打印。
 import hashlib
+import re
 from config import LANGFUSE_HOST, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY
 
 ENABLED = bool(LANGFUSE_HOST and LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY)
@@ -15,6 +16,40 @@ def trace_user_id(phone_number):
     # 原始手机号不进 trace：同一号码恒定映射到同一个短 id，能按人聚合会话，又不落 PII
     return hashlib.sha256(phone_number.encode("utf-8")).hexdigest()[:12]
 
+# 手机号有两类落点：作为 state 的键（app.py:132 把 {"phone_number": 明文} 当图的输入），
+# 以及被拼进正文（日志串、用户在提问里自己打的号码）。前者按键名换，后者用正则兜。
+# 负向环视是防止误伤长数字串里的一段（技术文档里的 11 位常量）。
+_PHONE_RE = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)")
+
+
+def _mask_node(data):
+    if isinstance(data, dict):
+        return {k: (trace_user_id(v) if k == "phone_number" and isinstance(v, str)
+                    else _mask_node(v))
+                for k, v in data.items()}
+    if isinstance(data, (list, tuple)):
+        return [_mask_node(x) for x in data]
+    if isinstance(data, str):
+        return _PHONE_RE.sub("<masked>", data)
+    return data
+
+
+def _mask_pii(data):
+    """SDK 以 mask(data=...) 关键字调用 ⇒ 形参名必须叫 data。
+    只作用于上报给 Langfuse 的那份数据，发给用户的 SSE 正文不经这里。
+    出错就整体打码：宁可丢一条 trace 的正文，也不能把明文送出去。"""
+    try:
+        return _mask_node(data)
+    except Exception:
+        return "<masked>"
+
+
+if ENABLED:
+    # mask 只在【第一次】初始化时生效：resource_manager.py:101-102 对同一 public_key
+    # 直接返回已注册实例并忽略新参数，client.py:289 的 self._mask 又取自那个共享实例
+    # ⇒ 这里先建带 mask 的，之后 trace_meta/generation/span 里的无参 Langfuse() 会继承；
+    # 反过来后补则永久失效。CallbackHandler 没有 mask 参数，靠 get_client() 继承（get_client.py:52）。
+    Langfuse(mask=_mask_pii)
 
 def callback_handler():
     """一次 HTTP 请求 new 一个，挂到 graph.stream 的 config 上 => 一次请求一条 trace，

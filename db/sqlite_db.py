@@ -4,6 +4,7 @@ from typing import List, Dict, Optional
 from config import SQLITE_DB_PATH
 from utils.logging_config import setup_logging
 from werkzeug.security import generate_password_hash, check_password_hash
+from observability import trace_user_id
 
 logger = setup_logging()
 
@@ -83,7 +84,7 @@ def update_chat_history(phone_number: str, role: str, content: str):
     )
     conn.commit()
     conn.close()
-    logger.info("聊天记录已保存: %s - %s", phone_number, role)
+    logger.info("聊天记录已保存: %s - %s", trace_user_id(phone_number), role)
 
 def get_user_info_from_db(phone_number: str) -> Optional[Dict]:
     conn = get_db_connection()
