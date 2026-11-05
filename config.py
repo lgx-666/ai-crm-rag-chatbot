@@ -69,3 +69,11 @@ PROMPT_TEMPLATES = {
     )
 }
 QWEN_DISABLE_THINKING = os.getenv("QWEN_DISABLE_THINKING", "false").strip().lower() in ("1", "true", "yes", "on")
+
+
+# 各分支的生成上限。"按意图分档"本来就是现状（RAG 500 / 闲聊 300 / 联网 800），
+# 这里只是把散在 response_generator.py 里的三个字面量提上来，好用 .env 临时抬高做对照。
+# 默认值与提取前逐字相同 ⇒ 这次改动对线上行为是中性的。
+RAG_MAX_TOKENS = int(os.getenv("RAG_MAX_TOKENS", "500"))
+CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "300"))
+WEB_MAX_TOKENS = int(os.getenv("WEB_MAX_TOKENS", "800"))

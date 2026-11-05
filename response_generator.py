@@ -15,6 +15,7 @@ from config import (
     SQLITE_DB_PATH,
     MEMORY_WINDOW, MEMORY_MAX_CHARS, SUMMARY_THRESHOLD,      # ← 记忆编排用得到，摘 COLLECTION 时别把它们一起带走
     QWEN_DISABLE_THINKING,
+    RAG_MAX_TOKENS, CHAT_MAX_TOKENS, WEB_MAX_TOKENS,
 )
 from db.vector_db import query_collection
 from kb_router import retrieval_plan
@@ -112,7 +113,7 @@ def stream_response_from_vectorstore(query, phone_number, history=None, summary=
     "只允许使用上面知识库中出现过的编号，不要编造。"
     )
 
-    yield from _stream_llm(build_messages(system_prompt, history, query, summary), 0.7, 500)
+    yield from _stream_llm(build_messages(system_prompt, history, query, summary), 0.7, RAG_MAX_TOKENS)
 
 
 def stream_other_intents(query, phone_number, history=None, summary=""):
@@ -130,7 +131,7 @@ def stream_other_intents(query, phone_number, history=None, summary=""):
         f"回答闲聊时保持这个产品身份，不要自称任何底层大模型名称。"
         f"用户信息：{user_info_str}。请恰当回复用户。"
     )
-    yield from _stream_llm(build_messages(system_prompt, history, query, summary), 0.7, 300)
+    yield from _stream_llm(build_messages(system_prompt, history, query, summary), 0.7, CHAT_MAX_TOKENS)
 
 
 # 网络检索
@@ -184,7 +185,7 @@ def stream_web_search(query, phone_number, history=None, summary=""):
         f"{context}"
     )
 
-    yield from _stream_llm(build_messages(system_prompt, history, query, summary), 0.5, 800)
+    yield from _stream_llm(build_messages(system_prompt, history, query, summary), 0.5, WEB_MAX_TOKENS)
 
 def _stream_llm(messages, temperature, max_tokens):
     """统一的流式 LLM 调用：把 OpenAI stream 逐 token 产出。
@@ -193,6 +194,8 @@ def _stream_llm(messages, temperature, max_tokens):
     gen = generation("llm-stream", MODEL_NAME, messages,
                     {"temperature": temperature, "max_tokens": max_tokens})
     parts, usage, err = [], None, None
+    finish = None                           # 放这里而不是循环里：create 本身抛异常时循环一次都没进，
+                                            # 而 finally 要引用它——未定义会在 finally 里 NameError，把真正的异常盖掉
     t0 = time.perf_counter()
     ttft = None                       # 首 token 时间：把"排队/握手慢"和"生成慢"分开
     # 层级②：主生成也关思考。与 intent/summary 共用 QWEN_DISABLE_THINKING，
@@ -212,7 +215,14 @@ def _stream_llm(messages, temperature, max_tokens):
                 if getattr(event, "usage", None) is not None:
                     usage = event.usage
                 continue
-            delta = event.choices[0].delta.content or ""
+            choice = event.choices[0]
+            # 用 getattr 而不是 choice.finish_reason：真实端点每个 chunk 都带这个字段，
+            # 但 tests/test_thinking_toggle.py 的 _FakeStream 是 SimpleNamespace 造的、没造它，
+            # 直接点属性会把那两条已有测试打挂。
+            fr = getattr(choice, "finish_reason", None)
+            if fr:
+                finish = fr
+            delta = choice.delta.content or ""
             if delta:
                 if ttft is None:
                     ttft = time.perf_counter() - t0
@@ -228,7 +238,11 @@ def _stream_llm(messages, temperature, max_tokens):
         gen.end("".join(parts), usage=usage_from(usage), error=err,
                 metadata={"ttft_ms": round(ttft * 1000, 1) if ttft is not None else None,
                         "total_ms": round((time.perf_counter() - t0) * 1000, 1),
-                        "chars": sum(len(p) for p in parts), "deltas": len(parts)})
+                        "chars": sum(len(p) for p in parts), "deltas": len(parts),
+                        # 截断过去是隐形的：全项目没人读 finish_reason，Langfuse 里只有 token 数，
+                        # 只能靠"答案刚好停在 500"反推。现在它变成一个能筛的字段。
+                        "finish_reason": finish,
+                        "truncated": finish == "length"})
 
 
 # 数据库检索
