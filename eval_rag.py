@@ -22,7 +22,8 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from datetime import datetime
 from importlib.metadata import version as _pkg_version   # 读 ragas 版本号，不用 import ragas 本体
 
-from config import OPENAI_API_KEY, OPENAI_BASE_URL, MODEL_NAME, EMBEDDING_MODEL
+from config import (OPENAI_API_KEY, OPENAI_BASE_URL, MODEL_NAME, EMBEDDING_MODEL,
+                    QWEN_DISABLE_THINKING, RAG_MAX_TOKENS)
 from db.vector_db import init_vectorstores, query_collection
 from kb_router import retrieval_plan
 from response_generator import stream_response_from_vectorstore
@@ -257,6 +258,9 @@ def main():
     df["answer_model"] = MODEL_NAME       # 生成答案用的模型，目前和裁判共用同一个开关
     df["max_workers"] = MAX_WORKERS
     df["timeout"] = TIMEOUT
+    df["disable_thinking"] = QWEN_DISABLE_THINKING   # 这一列就是第四轮要分离的那个变量
+    df["rag_max_tokens"] = RAG_MAX_TOKENS
+    df["embedding_model"] = EMBEDDING_MODEL
     df["ragas_version"] = _pkg_version("ragas")
     ts = datetime.now()                   # 时间戳只取一次：文件名和 run_at 必须同一刻
     df["run_at"] = ts.strftime("%Y-%m-%d %H:%M:%S")
@@ -270,7 +274,7 @@ def main():
     # 只看 mean 会把"7 格没算出来"读成"质量很好"（10-07 实测 faithfulness 虚高 0.0927）。
     print("\n===== 四指标 mean 与 n（n 不等于题数就是缺格）=====")
     for c in ["faithfulness", "answer_relevancy",
-              "llm_context_precision_with_reference", "context_recall"]:
+            "llm_context_precision_with_reference", "context_recall"]:
         if c in df.columns:
             s = df[c].astype(float)
             print(f"  {c:38} mean={s.mean():.4f}  n={s.notna().sum()}/{len(df)}")

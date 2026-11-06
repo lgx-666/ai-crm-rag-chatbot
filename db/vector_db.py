@@ -34,12 +34,15 @@ def init_vectorstores():
         # 根据 name 获取已有集合，若不存在则新建。
         name=COLLECTION_MARKET,
         # 指定使用余弦相似度作为向量检索的距离度量，适用于语义相似度比较。
-        metadata={"hnsw:space": "cosine"},
+        # search_ef=200：默认 10 对 656 条的库遍历太浅，会漏召（见报告 3.3.3）。
+        # 注意这两个键只在"集合被新建"时写进 segment_metadata；对已存在的集合是空操作，
+        # 现存库要靠直接改 chroma.sqlite3 的 segment_metadata（_lab_apply_search_ef.py）。
+        metadata={"hnsw:space": "cosine", "hnsw:search_ef": 200},
         embedding_function=embedding_fn 
     )
     _course_collection = _chroma_client.get_or_create_collection(
         name=COLLECTION_COURSE,
-        metadata={"hnsw:space": "cosine"},
+        metadata={"hnsw:space": "cosine", "hnsw:search_ef": 200},
         embedding_function=embedding_fn
     )
     logger.info("向量数据库初始化完成，集合：%s, %s", COLLECTION_MARKET, COLLECTION_COURSE)
