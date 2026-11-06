@@ -7,22 +7,38 @@
 #
 # 开关与降级（照 observability.py 的写法）：REDIS_URL 为空时全部方法退化成 no-op；
 # Redis 任何异常一律吞掉当成"没命中"。缓存不能把一次本来能成功的回答变成失败。
-# 缓存边界（两条硬约束）：
+# 缓存边界（三条硬约束）：
 #   1) 答案文本受"用户画像"影响（response_generator.py:89-93、102），所以画像签名必须
 #      进 key（scope）；不带 scope 的全局缓存会把 A 的带画像答案推给 B。
-#   2) LLM 调用失败时 _stream_llm 会把兜底道歉当成答案 yield 出来
+#   2) 答案文本也受检索/生成档位影响，所以配置指纹必须进 key（CONFIG_FP）；不含它的话，
+#      改完 .env 之后一小时内、TTL 里问过的同题仍会端出旧配置生成的答案。
+#   3) LLM 调用失败时 _stream_llm 会把兜底道歉当成答案 yield 出来
 #      （response_generator.py:201-204），这种"负面结果"一律不写缓存。
 import hashlib
 import json
 import time
 import unicodedata
 
-from config import REDIS_URL, PROMPT_TEMPLATES
+from config import (REDIS_URL, PROMPT_TEMPLATES, MODEL_NAME, EMBEDDING_MODEL,
+                    CHROMA_PERSIST_DIR, RAG_MAX_TOKENS, QWEN_DISABLE_THINKING)
+from kb_router import TOP_K_SINGLE, TOP_K_SHARED, LOSER_DUAL_THRESHOLD
 
 # v1 写进前缀：归一化规则或 payload 结构以后改了，换前缀就能让旧缓存整体失效
 NAMESPACE = "aicrm:qa:v1:"
 TTL_SECONDS = 3600
 CACHEABLE_INTENTS = {1}      # 写入门禁：只缓存意图1（知识库问答）
+
+
+# 配置指纹：答案不只由 query + 画像决定，检索与生成两侧的档位同样决定它。
+# 把这些值一起哈希进 key，改任何一档就等于整体平移到新 keyspace —— 旧条目立刻
+# 永不命中、按 TTL 自己过期，不需要谁记得去 clear()。
+# 刻意不含 JWT_SECRET（未设置时每次启动随机 ⇒ 会让缓存每次重启全废）与
+# LANGFUSE_*（埋点不改变答案文本）。
+CONFIG_FP = hashlib.sha256("|".join(str(v) for v in (
+    MODEL_NAME, EMBEDDING_MODEL, CHROMA_PERSIST_DIR,
+    TOP_K_SINGLE, TOP_K_SHARED, LOSER_DUAL_THRESHOLD,
+    RAG_MAX_TOKENS, QWEN_DISABLE_THINKING,
+)).encode("utf-8")).hexdigest()[:8]
 
 _client = None
 _resolved = False
@@ -40,8 +56,8 @@ def normalize(query):
 
 def _key(query, scope=""):
     """定长、无特殊字符，且原始问题不出现在 key 里（问题可能带手机号）。
-    \x00 做分隔符：避免"问题尾部字符 + 签名首字符"拼出同一个串的歧义。"""
-    raw = normalize(query) + "\x00" + (scope or "")
+    \x00 做分隔符：三段拼接时，避免"上一段尾字符 + 下一段首字符"凑出同一个串的歧义。"""
+    raw = normalize(query) + "\x00" + (scope or "") + "\x00" + CONFIG_FP
     return NAMESPACE + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
 
 
