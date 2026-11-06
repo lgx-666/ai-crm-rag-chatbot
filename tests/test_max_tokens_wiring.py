@@ -19,6 +19,9 @@ def captured(monkeypatch):
 
     monkeypatch.setattr(rg, "_stream_llm", fake_stream_llm)
     monkeypatch.setattr(rg, "get_user_info_from_db", lambda p: None)
+    # response_generator.py:142 在调 bocha_search 之前先判 BOCHA_API_KEY，CI 上没有 .env
+    # ⇒ 只打桩 bocha_search 会短路成"未配置"、captured 为空（run #27 实测：本地绿、CI 红）。
+    monkeypatch.setattr(rg, "BOCHA_API_KEY", "test-key-not-real")
     monkeypatch.setattr(rg, "bocha_search", lambda q, count=5: {
         "code": 200,
         "data": {"webPages": {"value": [
