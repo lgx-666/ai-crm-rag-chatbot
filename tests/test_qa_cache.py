@@ -190,4 +190,13 @@ def test_clear_返回条数并让缓存失效(monkeypatch):
     assert qc.size() == 1
     assert qc.clear() == 1
     assert fake.flushed == 1
-    assert qc.get("rag是什么") is None    
+    assert qc.get("rag是什么") is None
+
+
+def test_配置指纹进了key(monkeypatch):
+    # #43 的修法（_key 第三段 = CONFIG_FP）此前没有任何测试守卫：变异测试实测把它整段删掉，
+    # 全量仍 90 passed —— 因为单个测试进程里 CONFIG_FP 是常量，删不删它算出的 key 都一样。
+    # 这条用例让它"变一次"：指纹段没进 key 就会红。
+    baseline = qc._key("rag是什么")
+    monkeypatch.setattr(qc, "CONFIG_FP", "deadbeef")
+    assert qc._key("rag是什么") != baseline, "改 CONFIG_FP 后 key 没变 => 指纹没进 key"
