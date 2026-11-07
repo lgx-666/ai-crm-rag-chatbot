@@ -55,7 +55,7 @@ def normalize(query):
 
 
 def _key(query, scope=""):
-    """定长、无特殊字符，且原始问题不出现在 key 里（问题可能带手机号）。
+    r"""定长、无特殊字符，且原始问题不出现在 key 里（问题可能带手机号）。
     \x00 做分隔符：三段拼接时，避免"上一段尾字符 + 下一段首字符"凑出同一个串的歧义。"""
     raw = normalize(query) + "\x00" + (scope or "") + "\x00" + CONFIG_FP
     return NAMESPACE + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
