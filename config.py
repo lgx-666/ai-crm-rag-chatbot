@@ -77,3 +77,9 @@ QWEN_DISABLE_THINKING = os.getenv("QWEN_DISABLE_THINKING", "false").strip().lowe
 RAG_MAX_TOKENS = int(os.getenv("RAG_MAX_TOKENS", "500"))
 CHAT_MAX_TOKENS = int(os.getenv("CHAT_MAX_TOKENS", "300"))
 WEB_MAX_TOKENS = int(os.getenv("WEB_MAX_TOKENS", "800"))
+# 意图档与摘要档以前是写死在调用点的字面量（intent.py 的 10、摘要的 500），
+# 提上来跟 RAG/CHAT/WEB 对称。默认值与提取前逐字相同 ⇒ 对线上行为是中性；
+# 好处是做对照改 .env 就行，不必动代码（#52 那趟只能改代码重跑）。
+# 这两个键刻意不进 qa_cache 的 CONFIG_FP：意图3/4 与摘要从不写缓存，跟 CHAT/WEB 同理。
+INTENT_MAX_TOKENS = int(os.getenv("INTENT_MAX_TOKENS", "10"))
+SUMMARY_MAX_TOKENS = int(os.getenv("SUMMARY_MAX_TOKENS", "500"))

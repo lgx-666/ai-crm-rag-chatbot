@@ -16,6 +16,7 @@ from config import (
     MEMORY_WINDOW, MEMORY_MAX_CHARS, SUMMARY_THRESHOLD,      # ← 记忆编排用得到，摘 COLLECTION 时别把它们一起带走
     QWEN_DISABLE_THINKING,
     RAG_MAX_TOKENS, CHAT_MAX_TOKENS, WEB_MAX_TOKENS,
+    SUMMARY_MAX_TOKENS,
 )
 from db.vector_db import query_collection
 from kb_router import retrieval_plan
@@ -301,7 +302,7 @@ def update_and_get_summary(phone_number: str) -> str:
         f"【已有摘要】\n{summary or '（无）'}\n\n【新增对话】\n{convo}\n\n只输出更新后的摘要："
     )
     gen = generation("summary", MODEL_NAME, [{"role": "user", "content": prompt}],
-                {"temperature": 0.3, "max_tokens": 500})
+                {"temperature": 0.3, "max_tokens": SUMMARY_MAX_TOKENS})
     # 摘要只是写进 conversation_summary 的内部记忆，不是给用户看的内容，
     # 所以关思考零风险：实测它输出 970 token 里只有 307 字真正落到摘要表。
     kwargs = {}
@@ -311,12 +312,18 @@ def update_and_get_summary(phone_number: str) -> str:
         resp = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.3, max_tokens=500,
+            temperature=0.3, max_tokens=SUMMARY_MAX_TOKENS,
             **kwargs
         )
         new_summary = resp.choices[0].message.content.strip()
+        choice = resp.choices[0]
+        new_summary = choice.message.content.strip()
         save_conversation_summary(phone_number, new_summary, new_upto)   # 存库并推进游标
-        gen.end(new_summary, usage=usage_from(resp.usage))
+        # 摘要被截断比答案被截断更难发现：它静默写进 conversation_summary，从此成为这个
+        # 用户所有后续轮次的长期记忆。同一口径记 finish_reason/truncated。
+        fr = getattr(choice, "finish_reason", None)
+        gen.end(new_summary, usage=usage_from(resp.usage),
+                metadata={"finish_reason": fr, "truncated": fr == "length"})
         return new_summary
     except Exception as e:
         gen.end(error=str(e))
