@@ -45,3 +45,6 @@ coverage.xml
 htmlcov/
 
 *.whl
+
+_out*.txt
+_err*.txt
