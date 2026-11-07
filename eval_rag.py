@@ -27,6 +27,7 @@ from config import (OPENAI_API_KEY, OPENAI_BASE_URL, MODEL_NAME, EMBEDDING_MODEL
 from db.vector_db import init_vectorstores, query_collection
 from kb_router import retrieval_plan
 from response_generator import stream_response_from_vectorstore
+from observability import eval_span        # #63：给每题开一条可回读的父 span，拿它的 trace_id
 
 # 前两个指标在 ragas 0.2.x 里的类名；若你装的版本叫别的名字，
 # 用 `python -c "import ragas.metrics as m; print([x for x in dir(m) if 'Context' in x])"` 查，
@@ -189,26 +190,31 @@ def retrieve_contexts(query):
 
 
 def build_dataset():
-    """对每个问题跑一遍真实 RAG，收集 question/contexts/answer/reference 四要素"""
+    """对每个问题跑一遍真实 RAG，收集 question/contexts/answer/reference 四要素。
+    返回 (dataset, trace_ids)：两个列表在同一次循环里 append ⇒ 天然同序；
+    main() 落盘前还有两条 assert 兜住（#63）。埋点没开时 trace_ids 是全空串，列照样存在。"""
     init_vectorstores()
     samples = []
+    trace_ids = []
     for q, ref in QUESTIONS:                    # ← 现在是 (问题, 标准答案) 元组，要解包
-        contexts = retrieve_contexts(q)
-        # 复用真实生成函数（流式），拼成完整答案。
-        # phone 用占位符：get_user_info 查不到 → 走"新用户"分支，不影响知识问答。
-        answer = "".join(stream_response_from_vectorstore(q, phone_number="eval_user"))
+        with eval_span("eval " + q, {"question": q}) as tid:
+            contexts = retrieve_contexts(q)
+            # 复用真实生成函数（流式），拼成完整答案。
+            # phone 用占位符：get_user_info 查不到 → 走"新用户"分支，不影响知识问答。
+            answer = "".join(stream_response_from_vectorstore(q, phone_number="eval_user"))
         print(f"[{q}] 命中知识 {len(contexts)} 条，答案 {len(answer)} 字")
+        trace_ids.append(tid)
         samples.append(SingleTurnSample(
             user_input=q,
             retrieved_contexts=contexts,
             response=answer,
             reference=ref,                      # ← 新增：ground truth，两个检索指标要用
         ))
-    return EvaluationDataset(samples=samples)
+    return EvaluationDataset(samples=samples), trace_ids
 
 
 def main():
-    dataset = build_dataset()
+    dataset, trace_ids = build_dataset()
 
     # 裁判 LLM = 百炼 qwen（OpenAI 兼容端点），temperature=0 保证打分可复现
     llm = LangchainLLMWrapper(ChatOpenAI(
@@ -251,6 +257,13 @@ def main():
     print(result)
 
     df = result.to_pandas()
+    
+    
+    # #63：trace_id 必须由流水线自己带上，不能再靠"csv 的 response 与 trace.output 逐字节
+    # 相同"那种巧合式内容匹配反查。挂错题不报错、只把分数挪到别的题上 ⇒ 先断言再赋值。
+    assert len(trace_ids) == len(df), "trace_id 数 %d 与评估行数 %d 不等" % (len(trace_ids), len(df))
+    assert list(df["user_input"]) == [q for q, _ in QUESTIONS], "csv 行序与 QUESTIONS 不一致，拒绝落盘"
+    df["trace_id"] = trace_ids
 
     # 落款：把"用什么尺子量的"写进每一行。10-03 那份用 qwen-plus 当裁判、10-07 这份用
     # MODEL_NAME，csv 里都没记，隔一周就没人确定自己比的是不是同一把尺子。

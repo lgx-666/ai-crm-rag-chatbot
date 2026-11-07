@@ -3,6 +3,7 @@
 # 没有 Langfuse 服务而失败，连一行多余日志都不会打印。
 import hashlib
 import re
+from contextlib import contextmanager, ExitStack
 from config import LANGFUSE_HOST, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY
 
 ENABLED = bool(LANGFUSE_HOST and LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY)
@@ -132,4 +133,28 @@ def span(name, input=None):
     try:
         return _Span(Langfuse().start_observation(name=name, as_type="span", input=input))
     except Exception:
-        return _Span(None)    
+        return _Span(None) 
+    
+
+@contextmanager
+def eval_span(name, input=None):
+    """给离线脚本用的父 span：yield 出 trace_id，没开埋点时 yield ""。
+    为什么要它：generation() 在没有上下文时自建根 trace，调用方拿不到那个 id
+    ⇒ CSV 里没有 trace_id 列，分数只能靠内容指纹反查。显式开一条父 span，
+    里面的 generation 会自动挂进来（_lab_traceid_53.py 实测嵌套成立）。
+    用 ExitStack 而不是把 with 整个塞进 try：主体抛异常时不能吞掉它，
+    否则 @contextmanager 会 yield 两次并报一个看不出所以然的 RuntimeError。"""
+    if not ENABLED:
+        yield ""
+        return
+    stack = ExitStack()
+    tid = ""
+    try:
+        span = stack.enter_context(Langfuse().start_as_current_span(name=name, input=input))
+        tid = span.trace_id or ""
+    except Exception:
+        tid = ""
+    try:
+        yield tid
+    finally:
+        stack.close()       # 关掉 span；主体若抛异常，异常在 close 之后继续往外传   
