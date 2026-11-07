@@ -69,6 +69,26 @@ def import_files(directory: str, collection: str, extensions=('.pdf', '.docx', '
                                 metadatas=unique_metas, ids=ids)
     print(f"成功导入 {len(unique_chunks)} 个文档块到集合 {collection}")
 
+
+    # #54：换了语料就等于换了召回结果，缓存里的旧答案必须失效。
+    # 缓存 key = normalize(query) + profile_scope + CONFIG_FP（qa_cache.py:57），
+    # 而 CONFIG_FP 只覆盖 8 个生成侧档位，**不含语料内容、也不含 search_ef**
+    # ⇒ 新块进库后旧 key 一个新都不变，TTL 1h 内旧答案会被原样端出来。
+    import qa_cache
+
+    if not qa_cache.enabled():
+        # 宿主直跑时的常态，不是异常：REDIS_URL 只在 docker-compose.yml 的 app.environment 里，
+        # 而本脚本恰恰就是在宿主跑的 ⇒ 这里 clear() 永远是空操作，必须另外清容器里那个 Redis。
+        print("qa_cache: 本进程没有 REDIS_URL（宿主直跑），clear() 是空操作 —— 请另外执行：")
+        print("          docker compose exec redis redis-cli FLUSHDB")
+    else:
+        before = qa_cache.size()
+        ok = qa_cache.clear()
+        after = qa_cache.size()
+        print(f"qa_cache: clear() -> {ok}，条目 {before} -> {after}")
+        if after != 0:
+            print("!! 清空后仍有残留条目：确认 REDIS_URL 指的是不是同一个 db")
+
 if __name__ == '__main__':
     if len(sys.argv) < 3:
         print("用法: python import_knowledge.py <目录路径> <market|java>")
