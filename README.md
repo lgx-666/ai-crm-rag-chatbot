@@ -37,7 +37,7 @@ python import_knowledge.py ../knowledge/java java_knowledge
 ## 测试与评估
 
 ```
-python -m pytest              :: 76 用例；覆盖率 91%，分母故意只圈三个纯逻辑模块，范围见 pytest.ini
+python -m pytest              :: 95 用例；覆盖率 95%，分母故意只圈三个纯逻辑模块，范围见 pytest.ini
 python eval_rag.py            :: RAGAS 四指标，会调用付费 LLM，结果落 data/ragas_report_<时间戳>.csv
 ```
 
