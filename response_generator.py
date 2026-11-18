@@ -274,12 +274,15 @@ def handle_db_query(query, phone_number):
             [{"p":r[0],"n":r[1],"a":r[2],"o":r[3],"i":r[4]} for r in rows])
 
     db = SQLDatabase(engine)                              # ✅ 传 engine
+    kwargs = {}
+    if QWEN_DISABLE_THINKING:
+        kwargs["extra_body"] = {"enable_thinking": False}
     llm = ChatOpenAI(model=MODEL_NAME, api_key=OPENAI_API_KEY,
                     base_url=OPENAI_BASE_URL, temperature=0,
-                    max_tokens=RAG_MAX_TOKENS)
+                    max_tokens=RAG_MAX_TOKENS, **kwargs)
     # SQL Agent：让 LLM 自己把自然语言翻译成 SQL 在这个隔离库上执行
     agent = create_sql_agent(llm=llm, toolkit=SQLDatabaseToolkit(db=db, llm=llm),
-                            verbose=True, handle_parsing_errors=True)
+                            verbose=False, handle_parsing_errors=True)
     return agent.invoke({"input": query}).get('output', '无结果')
 
 
