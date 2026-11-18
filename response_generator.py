@@ -269,13 +269,14 @@ def handle_db_query(query, phone_number):
     src.close()
     # 把这一行灌进内存库，Agent 后续能看到的数据就只有它
     with engine.begin() as conn:
-        conn.executemany(
+        conn.execute(
             text("INSERT INTO my_info VALUES (:p,:n,:a,:o,:i)"),
             [{"p":r[0],"n":r[1],"a":r[2],"o":r[3],"i":r[4]} for r in rows])
 
     db = SQLDatabase(engine)                              # ✅ 传 engine
     llm = ChatOpenAI(model=MODEL_NAME, api_key=OPENAI_API_KEY,
-                    base_url=OPENAI_BASE_URL, temperature=0)
+                    base_url=OPENAI_BASE_URL, temperature=0,
+                    max_tokens=RAG_MAX_TOKENS)
     # SQL Agent：让 LLM 自己把自然语言翻译成 SQL 在这个隔离库上执行
     agent = create_sql_agent(llm=llm, toolkit=SQLDatabaseToolkit(db=db, llm=llm),
                             verbose=True, handle_parsing_errors=True)

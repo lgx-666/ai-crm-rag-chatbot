@@ -4,7 +4,7 @@ from functools import partial
 from langchain.tools import StructuredTool
 from langchain_openai import ChatOpenAI
 from db.sqlite_db import get_user_info_from_db, upsert_user_info
-from config import OPENAI_API_KEY, OPENAI_BASE_URL, MODEL_NAME, MEMORY_WINDOW
+from config import OPENAI_API_KEY, OPENAI_BASE_URL, MODEL_NAME, MEMORY_WINDOW, RAG_MAX_TOKENS
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,8 @@ def handle_function_calling(query: str, phone_number: str,
         model=MODEL_NAME,
         api_key=OPENAI_API_KEY,
         base_url=OPENAI_BASE_URL,
-        temperature=0
+        temperature=0,
+        max_tokens=RAG_MAX_TOKENS
     )
     llm_with_tools = llm.bind_tools(tools)
 
