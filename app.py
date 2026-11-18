@@ -18,13 +18,7 @@ from file_loader import load_and_chunk_file
 
 from auth import login_required, create_token   # 补 create_token
 
-# LangChain 相关导入
-from langchain_community.agent_toolkits.sql.base import create_sql_agent
-from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
-from langchain_community.utilities import SQLDatabase
-from langchain_openai import ChatOpenAI
-
-from config import SQLITE_DB_PATH, OPENAI_API_KEY, OPENAI_BASE_URL, MODEL_NAME,COLLECTION_MARKET, COLLECTION_COURSE
+from config import COLLECTION_MARKET, COLLECTION_COURSE
 
 logger = setup_logging()
 app = Flask(__name__)
@@ -178,36 +172,6 @@ def update_vectorstore():
         logger.error("向量数据库更新失败: %s", e)
         return jsonify({"error": str(e)}), 500
 
-# ---------- SQL Agent 接口 ----------
-@app.route('/sql_query', methods=['POST'])
-@login_required
-def sql_agent_query():
-    data = request.get_json() or {}
-    question = data.get('question')
-    if not question:
-        return jsonify({"error": "缺少 question 字段"}), 400
-
-    try:
-        db = SQLDatabase.from_uri(f"sqlite:///{SQLITE_DB_PATH}")
-        llm = ChatOpenAI(
-            model=MODEL_NAME,
-            api_key=OPENAI_API_KEY,
-            base_url=OPENAI_BASE_URL,
-            temperature=0
-        )
-        toolkit = SQLDatabaseToolkit(db=db, llm=llm)
-        agent = create_sql_agent(
-            llm=llm,
-            toolkit=toolkit,
-            verbose=True,
-            handle_parsing_errors=True
-        )
-        result = agent.invoke({"input": question})
-        answer = result.get('output', '无结果')
-        return jsonify({"question": question, "answer": answer}), 200
-    except Exception as e:
-        logger.error("SQL Agent 执行失败: %s", e)
-        return jsonify({"error": str(e)}), 500
 
 # ---------- 文件上传导入知识库接口 ----------
 ALLOWED_EXTENSIONS = {'.pdf', '.docx', '.md', '.html', '.htm', '.txt'}
